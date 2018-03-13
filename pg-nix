@@ -1,0 +1,142 @@
+#!/usr/env/bin bash
+
+# vim: set ft=bash
+
+ROOT=$PWD
+
+
+start_pg()
+{
+    IFS=' ' read -r -a args <<< "$@"
+    local n_args="${#args[@]}"
+    local i=0
+    local FOO_NAME
+    local FOO_PGPORT
+    local FOO_PGDATA
+
+    # TODO: change to sane arg parsing
+    # TODO: all vars should either be local or exported
+    echo "${args[@]}"
+
+    while [[ $i -lt $n_args ]]
+    do
+    case "${args[$i]}" in
+        -n|--name)
+        ((i++))
+        FOO_NAME="${args[$i]}"
+        echo "name read from input: $FOO_NAME"
+        ;;
+        -p|--port)
+        ((i++))
+        FOO_PGPORT="${args[$i]}"
+        echo "port read from input: $FOO_PGPORT"
+        ;;
+        *)
+        echo "unknown param: ${args[$i]}"
+        ;;
+    esac
+    ((i++))
+    done
+
+    if [ -z $FOO_NAME ]
+    then
+        local adj=$(adjectives | shuf | head -n 1)
+        local noun=$(nouns | shuf | head -n 1)
+        local nat=$(nationalities | shuf | head -n 1)
+        FOO_NAME="$adj"-"$nat"-"$noun"
+    fi
+
+    if [ -z $FOO_PGPORT ]
+    then
+        FOO_PGPORT=5432
+    fi
+
+    FOO_PGDATA="$ROOT/.pg/$FOO_NAME"
+    echo "Creating $FOO_PGDATA directory"
+    mkdir -p $FOO_PGDATA
+
+
+    chmod 0700 -R $FOO_PGDATA
+    echo "Starting postgres..."
+    PGDATA=$FOO_PGDATA initdb
+cat << EOF > $FOO_PGDATA/pg_hba.conf
+local all $USER ident
+local all all   password
+EOF
+    # TODO: accept:
+    #   $user USERNAME PASSWORD
+    # TODO: export env vars with PGPORT and all
+    PGDATA=$FOO_PGDATA postgres -p $FOO_PGPORT > $FOO_PGDATA/pglog 2>&1 &
+    FOO_PID=$!
+    if ps -p $FOO_PID > /dev/null
+    then
+        echo "Postgres started"
+    else
+        echo "Postgres failed to start:"
+        head $FOO_PGDATA/pglog
+        echo "(You may have to specify a custom port with --port)"
+    fi
+    echo "Logs are written to $FOO_PGDATA/pglog."
+    TRAPS="FOO_NAME=$FOO_NAME FOO_PGDATA=$FOO_PGDATA FOO_PID=$FOO_PID stop_pg; $TRAPS"
+
+    # TODO: export PGUSER, PGPASSWORD and PGDATABASE?
+
+    trap "$TRAPS" EXIT
+}
+
+stop_pg()
+{
+    echo stopping $FOO_NAME
+    echo killing $FOO_PID
+    kill $FOO_PID
+    wait $FOO_PID
+    echo removing $FOO_PGDATA
+    rm -rf $FOO_PGDATA
+}
+
+adjectives()
+{
+cat <<'EOF'
+agreeable
+brave
+calm
+delightful
+eager
+faithful
+gentle
+happy
+EOF
+}
+
+nouns()
+{
+cat <<'EOF'
+child
+day
+life
+man
+people
+thing
+time
+way
+woman
+world
+year
+EOF
+}
+
+nationalities()
+{
+cat <<'EOF'
+american
+australian
+british
+chinese
+french
+german
+indian
+italian
+japanese
+russian
+EOF
+}
