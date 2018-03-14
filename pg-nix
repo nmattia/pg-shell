@@ -2,96 +2,150 @@
 
 # vim: set ft=bash
 
-ROOT=$PWD
+# This one can't be local because we need to read it later on.
+PGS_ROOT=$PWD
 
 
 start_pg()
 {
-    IFS=' ' read -r -a args <<< "$@"
-    local n_args="${#args[@]}"
+    # Make sure that all variables are local to the function as not to clutter
+    # the caller's environment.
+    # N.B.: PGS stands for PG-Shell
+    local PGS_n_args
     local i=0
-    local FOO_NAME
-    local FOO_PGPORT
-    local FOO_PGDATA
+    local PGS_NAME
+    local PGS_PGPORT
+    local PGS_PGDATA
+    local PGS_PID
 
-    # TODO: change to sane arg parsing
-    # TODO: all vars should either be local or exported
-    echo "${args[@]}"
+    # This weird argument parsing works; OTOH looping while '$# -gt 0' leads to
+    # an infinite loop when inside the nix-shell, not sure why.
+    IFS=' ' read -r -a args <<< "$@"
+    PGS_n_args="${#args[@]}"
 
-    while [[ $i -lt $n_args ]]
+    while [[ $i -lt $PGS_n_args ]]
     do
     case "${args[$i]}" in
         -n|--name)
-        ((i++))
-        FOO_NAME="${args[$i]}"
-        echo "name read from input: $FOO_NAME"
+        ((i++)) # shift
+        PGS_NAME="${args[$i]}"
+        echo "name read from input: $PGS_NAME"
         ;;
         -p|--port)
-        ((i++))
-        FOO_PGPORT="${args[$i]}"
-        echo "port read from input: $FOO_PGPORT"
+        ((i++)) # shift
+        PGS_PGPORT="${args[$i]}"
+        echo "port read from input: $PGS_PGPORT"
         ;;
         *)
         echo "unknown param: ${args[$i]}"
         ;;
     esac
-    ((i++))
+    ((i++)) # shift
     done
 
-    if [ -z $FOO_NAME ]
+    if [ -z $PGS_NAME ]
     then
         local adj=$(adjectives | shuf | head -n 1)
         local noun=$(nouns | shuf | head -n 1)
         local nat=$(nationalities | shuf | head -n 1)
-        FOO_NAME="$adj"-"$nat"-"$noun"
+        PGS_NAME="$adj"-"$nat"-"$noun"
     fi
 
-    if [ -z $FOO_PGPORT ]
+    if [ -z $PGS_PGPORT ]
     then
-        FOO_PGPORT=5432
+        PGS_PGPORT=5432
     fi
 
-    FOO_PGDATA="$ROOT/.pg/$FOO_NAME"
-    echo "Creating $FOO_PGDATA directory"
-    mkdir -p $FOO_PGDATA
+    PGS_PGDATA="$PGS_ROOT/.pg/$PGS_NAME"
+    echo "Creating $PGS_PGDATA directory"
+    mkdir -p $PGS_PGDATA
 
 
-    chmod 0700 -R $FOO_PGDATA
+    chmod 0700 -R $PGS_PGDATA
     echo "Starting postgres..."
-    PGDATA=$FOO_PGDATA initdb
-cat << EOF > $FOO_PGDATA/pg_hba.conf
+    PGDATA=$PGS_PGDATA initdb
+cat << EOF > $PGS_PGDATA/pg_hba.conf
 local all $USER ident
 local all all   password
 EOF
-    # TODO: accept:
-    #   $user USERNAME PASSWORD
-    # TODO: export env vars with PGPORT and all
-    PGDATA=$FOO_PGDATA postgres -p $FOO_PGPORT > $FOO_PGDATA/pglog 2>&1 &
-    FOO_PID=$!
-    if ps -p $FOO_PID > /dev/null
+    echo "Now starting postgres..."
+    PGDATA=$PGS_PGDATA postgres -p $PGS_PGPORT > $PGS_PGDATA/pglog 2>&1 &
+    PGS_PID=$!
+    if ps -p $PGS_PID > /dev/null
     then
         echo "Postgres started"
     else
         echo "Postgres failed to start:"
-        head $FOO_PGDATA/pglog
+        head $PGS_PGDATA/pglog
         echo "(You may have to specify a custom port with --port)"
     fi
-    echo "Logs are written to $FOO_PGDATA/pglog."
-    TRAPS="FOO_NAME=$FOO_NAME FOO_PGDATA=$FOO_PGDATA FOO_PID=$FOO_PID stop_pg; $TRAPS"
+    echo "Logs are written to $PGS_PGDATA/pglog."
+    PGS_TRAPS="PGS_NAME=$PGS_NAME stop_pg; $PGS_TRAPS"
 
-    # TODO: export PGUSER, PGPASSWORD and PGDATABASE?
+    trap "$PGS_TRAPS" EXIT
 
-    trap "$TRAPS" EXIT
+    echo
+    echo "   name:  $PGS_NAME"
+    echo "   pid:   $PGS_PID"
+    echo "   port:  $PGS_PGPORT"
+}
+
+list_pg()
+{
+    local PGS_PGDATA
+    PGS_PGDATA="$PGS_ROOT/.pg/$PGS_NAME"
+    echo $PGS_PGDATA/* | xargs -n 1 basename
 }
 
 stop_pg()
 {
-    echo stopping $FOO_NAME
-    echo killing $FOO_PID
-    kill $FOO_PID
-    wait $FOO_PID
-    echo removing $FOO_PGDATA
-    rm -rf $FOO_PGDATA
+    local n_args
+    local i=0
+    local PGS_NAME
+    local PGS_PGPORT
+    local PGS_PGDATA
+    local PGS_PID
+
+    IFS=' ' read -r -a args <<< "$@"
+    n_args="${#args[@]}"
+
+    while [[ $i -lt $n_args ]]
+    do
+    case "${args[$i]}" in
+        -n|--name)
+        ((i++)) # shift
+        PGS_NAME="${args[$i]}"
+        echo "name read from input: $PGS_NAME"
+        ;;
+        -p|--port)
+        ((i++)) # shift
+        PGS_PGPORT="${args[$i]}"
+        echo "port read from input: $PGS_PGPORT"
+        ;;
+        *)
+        echo "unknown param: ${args[$i]}"
+        ;;
+    esac
+    ((i++)) # shift
+    done
+
+    if [ -z $PGS_NAME ]
+    then
+        echo "Please specify database name with --name"
+        return
+    fi
+
+    # Infer data directory from name
+    PGS_PGDATA="$PGS_ROOT/.pg/$PGS_NAME"
+    # Read PID from postmaster.pid file
+    PGS_PID=$(cat $PGS_PGDATA/postmaster.pid | head -n 1)
+
+    echo stopping $PGS_NAME
+    echo killing $PGS_PID
+    kill "$PGS_PID" || echo "(it's ok)"
+    wait $PGS_PID
+    echo removing $PGS_PGDATA
+    rm -rf $PGS_PGDATA
 }
 
 adjectives()
