@@ -1,11 +1,105 @@
 # pg-shell: PostgreSQL in a shell
 
-![pgshell](./pgshell.png)
+The `pg-shell` environment allows you to run PostgreSQL instances with _no
+strings attached_. The associated processes and data disappear when you exit
+your shell.
+
+<img src="pgshell.png" alt="pg-shell" style="width: 400px;"/>
 
 # Usage
 
-_This assumes that the [`pg-shell`](./pg-shell) is loaded in your shell. For
+_The examples assume that the [`pg-shell`](./pg-shell) script was loaded. For
 installation instructions, see the [Install](#install) section below._
+
+By loading the [`pg-shell`](./pg-shell) script you import three functions into
+your environment: `start_pg`, `list_pg` and `stop_pg`. You can use those to
+respectively start a new PostgreSQL instance, list the currently running
+(`pg-shell`) PostgreSQL instances and stop a particular PostgreSQL instance.
+
+Starting a local PostgreSQL instance is very easy:
+
+``` shell
+$ start_pg
+Creating /home/nicolas/projects/nmattia/pg-shell/.pg/gentle-british-time directory
+Starting postgres...
+...
+Now starting postgres...
+Postgres started
+Logs are written to /home/nicolas/projects/nmattia/pg-shell/.pg/gentle-british-time/pglog.
+
+   name:  gentle-british-time
+   pid:   24901
+   port:  5432
+```
+
+The `start_pg` function will start a PostgreSQL instance running in the
+background. By default the instance is started on port `5432` and the data is
+located in `<ROOT>/.pg/<NAME>`, where `ROOT` is the directory from which you
+_evaluated_ the [`pg-shell`](./pg-shell) script and `NAME` is a randomly
+generated name. In the example above, the `ROOT` is
+`/home/nicolas/projects/nmattia/pg-shell/` and the randomly generated name
+`NAME` is `gentle-british-time`. You can stop the instance by exiting the
+shell:
+
+``` shell
+$ exit
+stopping gentle-british-time
+killing 24901
+removing /home/nicolas/projects/nmattia/pg-shell/.pg/gentle-british-time
+```
+
+When calling `start_pg` you may specify the name and port of the PostgreSQL
+instance (note that the "name" of the instance is a `pg-shell` concept and has
+nothing to do with database names). Specifying the port is necessary if you
+need several instances running at the same time:
+
+``` shell
+$ start_pg
+Creating /home/nicolas/projects/nmattia/pg-shell/.pg/brave-italian-way directory
+Starting postgres...
+...
+Now starting postgres...
+Postgres started
+Logs are written to /home/nicolas/projects/nmattia/pg-shell/.pg/brave-italian-way/pglog.
+
+   name:  brave-italian-way
+   pid:   25743
+   port:  5432
+
+$ start_pg --name some-name --port 5555
+name read from input: some-name
+port read from input: 5555
+Creating /home/nicolas/projects/nmattia/pg-shell/.pg/some-name directory
+Starting postgres...
+...
+Now starting postgres...
+Postgres started
+Logs are written to /home/nicolas/projects/nmattia/pg-shell/.pg/some-name/pglog.
+
+   name:  some-name
+   pid:   25768
+   port:  5555
+```
+
+You can list the names of your running instances:
+
+``` shell
+$ list_pg
+brave-italian-way
+some-name
+```
+
+All instances will be destroyed upon shell exit:
+
+``` shell
+$ exit
+stopping some-name
+killing 25768
+removing /home/nicolas/projects/nmattia/pg-shell/.pg/some-name
+stopping brave-italian-way
+killing 25743
+removing /home/nicolas/projects/nmattia/pg-shell/.pg/brave-italian-way
+```
 
 ## Install
 
